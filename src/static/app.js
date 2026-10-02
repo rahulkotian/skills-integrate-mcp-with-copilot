@@ -2,7 +2,21 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitiesList = document.getElementById("activities-list");
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
+  const signupContainer = document.getElementById("signup-container");
   const messageDiv = document.getElementById("message");
+  const loginButton = document.getElementById("teacher-login-button");
+  const logoutButton = document.getElementById("teacher-logout-button");
+  const loginDialog = document.getElementById("teacher-login-dialog");
+  const loginForm = document.getElementById("teacher-login-form");
+  const loginError = document.getElementById("teacher-login-error");
+  let authorizationHeader = null;
+
+  function updateTeacherControls() {
+    const isTeacher = authorizationHeader !== null;
+    signupContainer.hidden = !isTeacher;
+    loginButton.hidden = isTeacher;
+    logoutButton.hidden = !isTeacher;
+  }
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -12,6 +26,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       // Clear loading message
       activitiesList.innerHTML = "";
+      while (activitySelect.options.length > 1) {
+        activitySelect.remove(1);
+      }
 
       // Populate activities list
       Object.entries(activities).forEach(([name, details]) => {
@@ -30,7 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${authorizationHeader ? `<button class="delete-btn" data-activity="${name}" data-email="${email}" aria-label="Unregister ${email}">Remove</button>` : ""}</li>`
                   )
                   .join("")}
               </ul>
@@ -80,6 +97,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: { Authorization: authorizationHeader },
         }
       );
 
@@ -124,6 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: { Authorization: authorizationHeader },
         }
       );
 
@@ -155,6 +174,51 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  loginButton.addEventListener("click", () => loginDialog.showModal());
+  document
+    .getElementById("teacher-login-cancel")
+    .addEventListener("click", () => loginDialog.close());
+
+  logoutButton.addEventListener("click", () => {
+    authorizationHeader = null;
+    signupForm.reset();
+    updateTeacherControls();
+    fetchActivities();
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("teacher-username").value;
+    const password = document.getElementById("teacher-password").value;
+    const authorization = `Basic ${btoa(`${username}:${password}`)}`;
+
+    try {
+      const response = await fetch("/auth/login", {
+        method: "POST",
+        headers: { Authorization: authorization },
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        loginError.textContent = result.detail || "Unable to sign in";
+        loginError.classList.remove("hidden");
+        return;
+      }
+
+      authorizationHeader = authorization;
+      loginForm.reset();
+      loginError.classList.add("hidden");
+      loginDialog.close();
+      updateTeacherControls();
+      fetchActivities();
+    } catch (error) {
+      loginError.textContent = "Unable to sign in. Please try again.";
+      loginError.classList.remove("hidden");
+      console.error("Error signing in:", error);
+    }
+  });
+
   // Initialize app
+  updateTeacherControls();
   fetchActivities();
 });
